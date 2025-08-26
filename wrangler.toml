@@ -1,4 +1,4 @@
-name = "movie-subtitle-api"
+name = "subtitlesapibzeroo"
 main = "worker.js"
 compatibility_date = "2024-08-26"
 compatibility_flags = ["nodejs_compat"]
