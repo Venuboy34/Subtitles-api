@@ -1,8 +1,16 @@
 {
-  "name": "subtitles-api",
+  "name": "movie-subtitle-api",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "API for fetching movie subtitles with TMDB integration",
+  "main": "worker.js",
   "scripts": {
+    "dev": "wrangler dev",
     "deploy": "wrangler deploy"
+  },
+  "keywords": ["subtitles", "movies", "api", "tmdb", "opensubtitles"],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240129.0"
   }
 }
