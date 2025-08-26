@@ -1,6 +1,5 @@
-// index.js - Cloudflare Worker main file
 const BASE_URL = 'https://www.opensubtitles.org';
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 async function handleRequest(request) {
   const url = new URL(request.url);
@@ -24,55 +23,22 @@ async function handleRequest(request) {
     // Route: Search by movie name
     if (path === '/search' && params.get('query')) {
       const query = params.get('query');
-      const sublanguageid = params.get('sublanguageid') || 'all';
-      const page = params.get('page') || '1';
-      
-      const searchUrl = `${BASE_URL}/en/search2/sublanguageid-${sublanguageid}/moviename-${encodeURIComponent(query)}/page-${page}`;
-      const searchResults = await scrapeSearchResults(searchUrl);
-      
-      return new Response(JSON.stringify({ success: true, data: searchResults }), { headers });
-    }
-    
-    // Route: Get subtitles by movie ID
-    else if (path === '/subtitles' && params.get('idmovie')) {
-      const idmovie = params.get('idmovie');
-      const sublanguageid = params.get('sublanguageid') || 'all';
-      
-      const searchUrl = `${BASE_URL}/en/search/sublanguageid-${sublanguageid}/idmovie-${idmovie}`;
-      const subtitles = await scrapeSubtitlesList(searchUrl);
-      
-      return new Response(JSON.stringify({ success: true, data: subtitles }), { headers });
+      const language = params.get('lang') || 'all';
+      const results = await searchSubtitles(query, language);
+      return new Response(JSON.stringify({ success: true, data: results }), { headers });
     }
     
     // Route: Get download link
     else if (path === '/download' && params.get('id')) {
       const id = params.get('id');
-      
       const downloadUrl = await getDownloadLink(id);
-      
       return new Response(JSON.stringify({ success: true, downloadUrl }), { headers });
     }
     
-    // Route: Direct download (proxies the file)
+    // Route: Direct download
     else if (path === '/direct' && params.get('id')) {
       const id = params.get('id');
-      
-      const downloadUrl = await getDownloadLink(id);
-      
-      // Fetch the subtitle file
-      const subtitleResponse = await fetch(downloadUrl, {
-        headers: {
-          'User-Agent': USER_AGENT,
-          'Referer': `${BASE_URL}/en/subtitles/${id}`
-        }
-      });
-      
-      if (!subtitleResponse.ok) {
-        throw new Error(`Failed to fetch subtitle: ${subtitleResponse.status}`);
-      }
-      
-      const subtitleContent = await subtitleResponse.text();
-      
+      const subtitleContent = await downloadSubtitle(id);
       return new Response(subtitleContent, { 
         headers: {
           'Content-Type': 'text/plain',
@@ -82,9 +48,27 @@ async function handleRequest(request) {
       });
     }
     
-    // Health check endpoint
+    // Health check
     else if (path === '/health') {
-      return new Response(JSON.stringify({ success: true, status: 'OK' }), { headers });
+      return new Response(JSON.stringify({ success: true, status: 'OK', timestamp: new Date().toISOString() }), { headers });
+    }
+    
+    // Help endpoint
+    else if (path === '/') {
+      const help = {
+        endpoints: {
+          search: '/search?query=MOVIE_NAME&lang=LANGUAGE_CODE',
+          download: '/download?id=SUBTITLE_ID',
+          direct: '/direct?id=SUBTITLE_ID',
+          health: '/health'
+        },
+        examples: {
+          search: '/search?query=inception&lang=en',
+          download: '/download?id=123456',
+          direct: '/direct?id=123456'
+        }
+      };
+      return new Response(JSON.stringify(help), { headers });
     }
     
     // Invalid route
@@ -92,9 +76,9 @@ async function handleRequest(request) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Invalid endpoint. Available endpoints: /search?query=NAME, /subtitles?idmovie=ID, /download?id=ID, /direct?id=ID' 
+          error: 'Invalid endpoint. Use /search?query=NAME, /download?id=ID, or /direct?id=ID' 
         }), 
-        { headers, status: 400 }
+        { headers, status: 404 }
       );
     }
   } catch (error) {
@@ -105,106 +89,80 @@ async function handleRequest(request) {
   }
 }
 
-// Scrape search results by movie name
-async function scrapeSearchResults(url) {
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': USER_AGENT
-    }
+// Search subtitles by movie name
+async function searchSubtitles(query, language = 'all') {
+  const searchUrl = `${BASE_URL}/en/search2/sublanguageid-${language}/moviename-${encodeURIComponent(query)}`;
+  
+  const response = await fetch(searchUrl, {
+    headers: { 'User-Agent': USER_AGENT }
   });
   
   if (!response.ok) {
-    throw new Error(`Failed to fetch search results: ${response.status}`);
+    throw new Error(`Search failed: ${response.status}`);
   }
   
   const html = await response.text();
+  const results = [];
   
-  // Use regex to extract movie information
-  const moviePattern = /<a href="\/en\/search\/sublanguageid-[^"]+\/idmovie-(\d+)"[^>]*>([^<]+)<\/a>/g;
-  
-  const movies = [];
+  // Extract movie IDs and titles
+  const moviePattern = /idmovie-(\d+)[^>]*>([^<]+)</g;
   let match;
   
   while ((match = moviePattern.exec(html)) !== null) {
-    movies.push({
+    results.push({
       id: match[1],
-      title: match[2].trim()
+      title: match[2].trim(),
+      searchUrl: `${BASE_URL}/en/search/sublanguageid-${language}/idmovie-${match[1]}`
     });
   }
   
-  return movies;
+  return results;
 }
 
-// Scrape subtitles list for a specific movie
-async function scrapeSubtitlesList(url) {
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': USER_AGENT
-    }
-  });
-  
-  if (!response.ok) {
-    throw new Error(`Failed to fetch subtitles list: ${response.status}`);
-  }
-  
-  const html = await response.text();
-  
-  // Use regex to extract subtitle information
-  const subtitlePattern = /<tr[^>]*data-id="(\d+)"[^>]*>[\s\S]*?<strong[^>]*>([^<]+)<\/strong>[\s\S]*?<td[^>]*>([^<]+)<\/td>[\s\S]*?<td[^>]*>([^<]+)<\/td>[\s\S]*?<span class="[^"]*flags[^"]* ([^"]*)"[^>]*>[\s\S]*?<\/tr>/g;
-  
-  const subtitles = [];
-  let match;
-  
-  while ((match = subtitlePattern.exec(html)) !== null) {
-    subtitles.push({
-      id: match[1],
-      name: match[2].trim(),
-      uploader: match[3].trim(),
-      downloads: match[4].trim(),
-      language: match[5],
-      downloadUrl: `${BASE_URL}/en/subtitleserve/sub/${match[1]}`
-    });
-  }
-  
-  return subtitles;
-}
-
-// Get download link for a specific subtitle ID
+// Get download link for a subtitle ID
 async function getDownloadLink(id) {
   const detailUrl = `${BASE_URL}/en/subtitles/${id}`;
   
   const response = await fetch(detailUrl, {
-    headers: {
-      'User-Agent': USER_AGENT
-    }
+    headers: { 'User-Agent': USER_AGENT }
   });
   
   if (!response.ok) {
-    throw new Error(`Failed to fetch subtitle details: ${response.status}`);
+    throw new Error(`Failed to get subtitle details: ${response.status}`);
   }
   
   const html = await response.text();
   
-  // Look for the download form or link
-  const downloadPattern = /<a href="(\/en\/subtitleserve\/sub\/\d+[^"]*)"[^>]*download[^>]*>/i;
+  // Look for download link
+  const downloadPattern = /href="(\/en\/subtitleserve\/sub\/\d+[^"]*)"/i;
   const match = html.match(downloadPattern);
   
   if (match && match[1]) {
     return BASE_URL + match[1];
   }
   
-  // Alternative method: check for form action
-  const formPattern = /<form[^>]*action="(\/en\/subtitleserve\/sub\/\d+[^"]*)"[^>]*>/i;
-  const formMatch = html.match(formPattern);
-  
-  if (formMatch && formMatch[1]) {
-    return BASE_URL + formMatch[1];
-  }
-  
   throw new Error('Download link not found');
 }
 
-// Event listener for Cloudflare Workers
+// Download subtitle content
+async function downloadSubtitle(id) {
+  const downloadUrl = await getDownloadLink(id);
+  
+  const response = await fetch(downloadUrl, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Referer': `${BASE_URL}/en/subtitles/${id}`
+    }
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Download failed: ${response.status}`);
+  }
+  
+  return await response.text();
+}
+
+// Cloudflare Worker event listener
 addEventListener('fetch', event => {
   event.respondWith(handleRequest(event.request));
 });
