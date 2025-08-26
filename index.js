@@ -54,7 +54,7 @@ async function handleRequest(request) {
     }
     
     // Help endpoint
-    else if (path === '/') {
+    else {
       const help = {
         endpoints: {
           search: '/search?query=MOVIE_NAME&lang=LANGUAGE_CODE',
@@ -69,17 +69,6 @@ async function handleRequest(request) {
         }
       };
       return new Response(JSON.stringify(help), { headers });
-    }
-    
-    // Invalid route
-    else {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Invalid endpoint. Use /search?query=NAME, /download?id=ID, or /direct?id=ID' 
-        }), 
-        { headers, status: 404 }
-      );
     }
   } catch (error) {
     return new Response(
@@ -104,16 +93,18 @@ async function searchSubtitles(query, language = 'all') {
   const html = await response.text();
   const results = [];
   
-  // Extract movie IDs and titles
-  const moviePattern = /idmovie-(\d+)[^>]*>([^<]+)</g;
+  // Simple regex to extract movie information
+  const regex = /idmovie-(\d+)[^>]*>([^<]+)</g;
   let match;
   
-  while ((match = moviePattern.exec(html)) !== null) {
-    results.push({
-      id: match[1],
-      title: match[2].trim(),
-      searchUrl: `${BASE_URL}/en/search/sublanguageid-${language}/idmovie-${match[1]}`
-    });
+  while ((match = regex.exec(html)) !== null) {
+    if (match[1] && match[2]) {
+      results.push({
+        id: match[1],
+        title: match[2].trim(),
+        searchUrl: `${BASE_URL}/en/search/sublanguageid-${language}/idmovie-${match[1]}`
+      });
+    }
   }
   
   return results;
@@ -121,27 +112,7 @@ async function searchSubtitles(query, language = 'all') {
 
 // Get download link for a subtitle ID
 async function getDownloadLink(id) {
-  const detailUrl = `${BASE_URL}/en/subtitles/${id}`;
-  
-  const response = await fetch(detailUrl, {
-    headers: { 'User-Agent': USER_AGENT }
-  });
-  
-  if (!response.ok) {
-    throw new Error(`Failed to get subtitle details: ${response.status}`);
-  }
-  
-  const html = await response.text();
-  
-  // Look for download link
-  const downloadPattern = /href="(\/en\/subtitleserve\/sub\/\d+[^"]*)"/i;
-  const match = html.match(downloadPattern);
-  
-  if (match && match[1]) {
-    return BASE_URL + match[1];
-  }
-  
-  throw new Error('Download link not found');
+  return `${BASE_URL}/en/subtitleserve/sub/${id}`;
 }
 
 // Download subtitle content
