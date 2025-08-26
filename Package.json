@@ -1,0 +1,13 @@
+{
+  "name": "subtitles-api",
+  "version": "1.0.0",
+  "description": "API for scraping subtitles from OpenSubtitles",
+  "main": "index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler publish"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
