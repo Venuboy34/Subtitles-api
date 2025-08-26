@@ -1,12 +1,8 @@
 {
   "name": "subtitles-api",
   "version": "1.0.0",
-  "description": "OpenSubtitles Scraping API",
   "main": "index.js",
   "scripts": {
     "deploy": "wrangler deploy"
-  },
-  "keywords": ["subtitles", "api", "cloudflare"],
-  "author": "",
-  "license": "MIT"
+  }
 }
