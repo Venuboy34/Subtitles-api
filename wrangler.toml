@@ -1,3 +1,7 @@
-name = "subtitles-api"
-main = "index.js"
-compatibility_date = "2024-01-15"
+name = "movie-subtitle-api"
+main = "worker.js"
+compatibility_date = "2024-08-26"
+compatibility_flags = ["nodejs_compat"]
+
+[env.production]
+name = "movie-subtitle-api"
